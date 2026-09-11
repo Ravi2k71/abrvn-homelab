@@ -400,7 +400,7 @@ This repository intentionally does **not** contain:
 
 Examples in the documentation use sanitized paths, placeholders, or generalized architecture diagrams where appropriate.
 
-The repository is intended to demonstrate infrastructure design and engineering decisions without exposing private information from the underlying homelab.
+The repository is intended to demonstrate infrastructure design, engineering decisions, and allows for anyone to try it themselves without exposing private information from the underlying homelab.
 
 ---
 
