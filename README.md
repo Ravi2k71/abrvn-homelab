@@ -23,7 +23,7 @@ The goal is not simply to run applications, but to design, secure, monitor, main
 | Operating System    | Pop!_OS 24.04 LTS   |
 | CPU                 | Intel Core i5-6500  |
 | Memory              | 16 GB RAM           |
-| Storage             | 2 × 1 TB HDD RAID 0 |
+| Storage             | 2 × 1 TB HDD RAID 0 (Stripe) |
 | Photo Management    | PhotoPrism CE       |
 | Database            | MariaDB             |
 | Containers          | Docker              |
