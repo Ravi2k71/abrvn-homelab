@@ -1,0 +1,70 @@
+# Secrets and credentials
+.env
+.env.*
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# Personal/private data
+photos/
+private/
+personal/
+*.db
+*.sqlite
+*.sqlite3
+
+# Backups
+backups/
+backup/
+*.bak
+*.backup
+*.tar
+*.tar.gz
+*.zip
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+*~
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Build/output files
+dist/
+build/
+
+# Webmin/runtime files
+*.pid
+*.sock
+
+# Local configuration
+config.local.*
+local.*
