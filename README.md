@@ -88,39 +88,26 @@ Detailed architecture documentation will be maintained in:
 
 ## Security
 
-Security is treated as a core part of the project rather than an afterthought.
+Security is a core consideration of the homelab, with an emphasis on minimizing attack surface, restricting administrative access, and separating publicly accessible services from internal infrastructure.
 
-Current security controls include:
+Current security practices include:
 
-* UFW host-based firewall
-* Restricted administrative access
-* Tailscale-based networking
-* TOTP multi-factor authentication for supported applications/accounts
-* Docker services isolated from unnecessary host port exposure
-* Reverse proxy architecture through Caddy
-* Restricted Webmin network access
-* Automated configuration and database backups
-* 3-2-1 backup strategy
+* UFW host-based firewall with service-specific network restrictions
+* Tailscale for secure remote connectivity
+* Restricted administrative access to services such as SSH and Webmin
+* Docker services configured without unnecessary host port exposure
+* Caddy used as a controlled reverse-proxy layer
+* Separation of application services from administrative services
+* Automated backups of important application and configuration data
 * Encrypted offline backup storage
-* Regular system maintenance and recovery planning
+* Regular system updates and configuration review
+* Avoiding direct public exposure of administrative services
 
-Administrative services are intentionally not exposed directly to the public Internet.
+The server follows a principle of **least necessary exposure**: services are only made accessible where there is a specific requirement, and administrative interfaces are kept separate from the public PhotoPrism access path.
 
-Future security improvements will include additional access-control hardening, security reviews, network segmentation, and expanded monitoring.
+Security improvements are treated as an ongoing process. Future work will include additional access controls, multi-factor authentication, Tailscale access policies, network segmentation, security monitoring, threat-model documentation, and periodic security reviews.
 
----
-
-## Storage & RAID
-
-The current server uses two 1 TB hard drives configured as a **RAID 0 array**.
-
-RAID 0 provides increased usable capacity and performance but does **not** provide redundancy. The array is therefore treated as production storage rather than a backup mechanism.
-
-The homelab's data protection strategy relies on the separate 3-2-1 backup system.
-
-Future storage plans include evaluating larger drives and transitioning primary storage to a redundant configuration such as RAID 1.
-
----
+--
 
 ## Backup & Recovery
 
