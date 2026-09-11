@@ -2,11 +2,11 @@
 
 ## Overview
 
-Docker is used as the primary application deployment platform in the ABRVN Homelab.
+Docker is the primary application deployment platform used in the ABRVN Homelab.
 
-Rather than installing every application directly onto the Pop!_OS host, application services are deployed as containers. This provides greater separation between the host operating system and individual applications while making services easier to deploy, update, troubleshoot, and reproduce.
+This homelab started as an effort to repurpose a **Dell Precision 3620 workstation** into a practical self-hosted server. As more services were added, Docker provided a way to experiment with different applications without turning the underlying Pop!_OS installation into a collection of tightly coupled application dependencies.
 
-The current Docker environment consists primarily of:
+The current Docker environment primarily hosts:
 
 * PhotoPrism
 * MariaDB
@@ -16,43 +16,51 @@ These services work together to provide the homelab's self-hosted photo manageme
 
 ## Why Docker?
 
-Containers provide several advantages for this homelab.
+Docker is used because it provides a practical balance between **learning, isolation, maintainability, and reproducibility**.
+
+For this project, containers are not being used simply because they are a popular technology. They solve several real problems encountered while building and maintaining the homelab.
 
 ### Application Isolation
 
-Each application runs within its own container environment instead of being installed directly onto the host operating system.
+Each application runs within its own container environment instead of being installed directly onto the Pop!_OS host.
 
-This reduces the amount of application-specific software installed on the host and helps prevent configuration conflicts between services.
+This keeps application dependencies and configurations separated from the operating system.
 
-For example, PhotoPrism and MariaDB have different software requirements, but they can run independently while communicating through Docker networking.
+For example, PhotoPrism and MariaDB have different software requirements, but they can operate independently while communicating through Docker networking.
+
+This also makes troubleshooting more straightforward because problems can often be isolated to a particular service rather than affecting the entire host.
 
 ### Reproducibility
 
 Docker Compose allows the application architecture to be described declaratively.
 
-Instead of manually installing and configuring every component, the services, networks, volumes, and dependencies can be defined in a Compose configuration.
+Instead of manually rebuilding every application installation, the services, networks, volumes, and dependencies can be defined in a Compose configuration.
 
-This makes it easier to rebuild the application stack after a system failure or migration.
+This is particularly important for this homelab because the goal is not just to have a server that works today, but to understand how the infrastructure could be rebuilt after a failure or migration.
 
 ### Easier Maintenance
 
-Containers allow individual services to be updated or restarted independently.
+Containers allow individual services to be updated, restarted, or recreated independently.
 
-For example, Caddy can be restarted without requiring PhotoPrism or MariaDB to be restarted.
+For example, Caddy can be restarted without necessarily restarting PhotoPrism or MariaDB.
 
-This reduces the impact of maintenance operations on unrelated services.
+This reduces the impact of maintenance and makes experimentation safer.
 
 ### Portability
 
-The containerized architecture can potentially be moved to another Linux host with relatively little modification.
+The containerized architecture makes the application stack less dependent on the specific Dell Precision 3620 hardware.
 
-This is useful for future hardware upgrades, disaster recovery, or migration to another server.
+If the server is eventually replaced or upgraded, the application layer can potentially be moved to another Linux host without completely rebuilding the environment from scratch.
+
+This is one of the reasons the project separates the **application layer** from the **underlying hardware and persistent data**.
 
 ### Reduced Host Exposure
 
 Docker also allows services to communicate internally without publishing every application port directly to the host.
 
-This is an important part of the homelab's security design.
+For this homelab, this is particularly important from a security perspective.
+
+PhotoPrism and MariaDB do not need to be independently accessible from the LAN or Internet. Their communication can remain within the Docker environment while Caddy provides the controlled application entry point.
 
 ## Current Architecture
 
@@ -95,26 +103,19 @@ The current application stack consists of three primary containers:
 
 PhotoPrism is the primary application running in the Docker environment.
 
-It provides:
+It provides the self-hosted interface for managing and browsing the homelab's family photo and video library.
 
-* Photo and video organization
-* Search and browsing
-* Metadata processing
-* Thumbnail generation
-* Facial and image classification capabilities
-* Web-based access to the photo library
-
-The PhotoPrism container is not directly published to the host network.
+The PhotoPrism container is intentionally not published directly to the host network.
 
 Instead, requests are routed through Caddy.
 
-This prevents the PhotoPrism application port from becoming an independently exposed host service.
+This provides a single controlled entry point rather than exposing the application's internal port independently.
 
 ## MariaDB
 
 MariaDB provides the database backend used by PhotoPrism.
 
-The database is separated into its own container rather than being installed directly on the Pop!_OS host.
+The database is separated into its own container rather than being installed directly onto the Pop!_OS host.
 
 PhotoPrism communicates with MariaDB through Docker's internal networking.
 
@@ -128,18 +129,18 @@ Caddy serves as the reverse proxy for the PhotoPrism application.
 
 Its responsibilities include:
 
-* Receiving incoming HTTP/HTTPS requests
+* Receiving incoming web requests
 * Forwarding requests to PhotoPrism
-* Handling the reverse-proxy layer
-* Providing a controlled entry point to the application
+* Providing a controlled application entry point
+* Working with the homelab's remote-access architecture
 
-The Caddy container publishes HTTP to the host's loopback interface:
+The Caddy container currently publishes HTTP to the host's loopback interface:
 
 ```text
 127.0.0.1:80 → Caddy:80
 ```
 
-This means the service is bound to the server itself rather than listening directly on all LAN interfaces.
+This prevents Caddy's HTTP listener from being directly published on all host network interfaces.
 
 External access is provided through the Tailscale Funnel layer.
 
@@ -147,9 +148,9 @@ External access is provided through the Tailscale Funnel layer.
 
 Caddy and PhotoPrism communicate through a dedicated Docker network.
 
-This allows containers to communicate using Docker's internal networking rather than requiring each service to expose its application port to the host.
+This allows containers to communicate using Docker's internal networking instead of requiring each service to expose its application port to the host.
 
-The architecture can therefore be thought of as two separate networking layers:
+The architecture can therefore be viewed as two separate networking layers:
 
 ```text
 External / Host Network
@@ -170,6 +171,8 @@ External / Host Network
         └── MariaDB
 ```
 
+This separation is intentional: the host handles external connectivity and security controls, while the containers handle application-to-application communication.
+
 ## Storage
 
 PhotoPrism's original media library is stored outside the container.
@@ -188,28 +191,28 @@ This directory is mounted into the PhotoPrism container as its originals directo
 
 Keeping the photo library outside the container provides an important separation between **application software** and **persistent user data**.
 
-The container can be replaced without deleting the underlying photo library.
+The PhotoPrism container can therefore be replaced without inherently replacing the underlying photo library.
 
 ## Persistent Data
 
-Not all application data should be treated as disposable container data.
+Container instances themselves should generally be considered replaceable.
 
-The homelab therefore separates:
+Persistent data is treated differently.
+
+The homelab separates:
 
 * Container images
 * Container configuration
 * Application databases
-* Photo/video originals
+* Photo and video originals
 * Generated application data
 * Backup data
 
-Persistent data is stored using host-mounted storage or Docker volumes where appropriate.
-
-This allows the application layer to be recreated without necessarily recreating the underlying data.
+This separation allows the application layer to be rebuilt while preserving important data through the homelab's backup and recovery strategy.
 
 ## Container Lifecycle
 
-The basic lifecycle of a service is:
+The general service lifecycle is:
 
 ```text
 Docker Compose Configuration
@@ -236,13 +239,13 @@ Docker Compose Configuration
       Normal Operation
 ```
 
-When maintenance is required, individual services can be restarted or recreated without necessarily affecting the entire host system.
+This model has also become useful as a learning tool. Rather than treating Docker as a black box, the homelab is used to understand how images, containers, networks, volumes, dependencies, and host resources interact.
 
 ## Security Considerations
 
-Docker is treated as an application isolation and deployment mechanism, **not as a complete security boundary**.
+Docker is treated as an **application deployment and isolation mechanism**, not as a complete security boundary.
 
-The homelab uses several additional controls:
+The homelab uses additional controls, including:
 
 * UFW host firewall
 * Tailscale remote connectivity
@@ -254,11 +257,9 @@ The homelab uses several additional controls:
 * Regular software updates
 * Backup and recovery procedures
 
-The goal is to minimize unnecessary exposure while maintaining reliable service access.
+The goal is to reduce unnecessary exposure while maintaining reliable service access.
 
 ## Current Container State
-
-The primary Docker services are currently:
 
 | Container  | Purpose                      | Host Port Exposure |
 | ---------- | ---------------------------- | ------------------ |
@@ -266,7 +267,7 @@ The primary Docker services are currently:
 | MariaDB    | PhotoPrism database          | None               |
 | Caddy      | Reverse proxy                | `127.0.0.1:80`     |
 
-PhotoPrism and MariaDB expose their application ports only within the Docker environment.
+PhotoPrism and MariaDB expose their application ports within the Docker environment rather than directly publishing them to the host.
 
 Caddy provides the controlled host-facing entry point.
 
@@ -299,7 +300,7 @@ Example files should contain placeholders rather than real passwords, tokens, pr
 
 Docker itself is not considered a backup system.
 
-The homelab's backup strategy protects important persistent data and configuration separately from the running containers.
+The homelab's separate backup strategy protects important persistent data and configuration.
 
 A recovery process should be capable of:
 
@@ -311,7 +312,28 @@ A recovery process should be capable of:
 6. Starting the container stack
 7. Verifying application functionality
 
-This approach makes the container environment **rebuildable** rather than dependent on the continued existence of a particular container instance.
+The goal is to make the environment **rebuildable** rather than dependent on a particular container instance.
+
+## Lessons Learned
+
+Building the PhotoPrism environment has also made Docker a practical learning exercise.
+
+One of the important lessons has been that containerization does not eliminate the need to understand the underlying operating system.
+
+The containers still depend on:
+
+* Host storage
+* File permissions
+* Networking
+* DNS
+* Firewall rules
+* CPU and memory resources
+* Kernel functionality
+* Backup and recovery procedures
+
+When something goes wrong, understanding the relationship between the host and containers is often more useful than simply restarting the container.
+
+This project therefore uses Docker both as an infrastructure technology and as a way to develop practical Linux systems-administration skills.
 
 ## Future Improvements
 
@@ -321,7 +343,7 @@ Planned Docker improvements include:
 * Container health monitoring
 * Automated service-status reporting
 * Resource monitoring
-* Container update strategy
+* Documented container update procedures
 * Improved backup verification
 * Documented disaster-recovery procedures
 * Additional Docker security hardening
@@ -334,4 +356,4 @@ The Docker architecture follows a simple principle:
 
 > **Treat containers as replaceable application infrastructure and persistent data as something that must be deliberately protected.**
 
-This allows the application stack to evolve without unnecessarily tying the underlying data to a specific container installation.
+The broader goal of the ABRVN Homelab is not simply to run services. It is to build, document, break, troubleshoot, secure, and improve a real self-hosted environment while developing practical infrastructure and cybersecurity skills.
