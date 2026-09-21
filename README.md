@@ -1,422 +1,285 @@
 # ABRVN Homelab — Self-Hosted Infrastructure & Security Lab
 
-A self-hosted infrastructure lab focused on Linux administration, containerization, storage, networking, remote access, security hardening, monitoring, automation, and disaster recovery.
+A practical self-hosted infrastructure project focused on Linux administration, containerization, storage, networking, secure remote access, monitoring, automation, and disaster recovery.
 
-The project started as a way to build a practical self-hosted photo server and has grown into a broader environment for learning infrastructure and security engineering through hands-on experimentation.
+The project began as a family photo server and grew into a hands-on environment for learning systems administration and cybersecurity while operating real services.
 
-> **Status:** Active development
+> **Status:** Active development — core PhotoPrism infrastructure is operational; documentation and disaster-recovery work are ongoing.
 
 ---
 
 ## Overview
 
-The ABRVN Homelab is a personal infrastructure environment built around a repurposed Dell Precision workstation.
+ABRVN Homelab runs on a repurposed Dell Precision 3620. Its primary production workload is **PhotoPrism CE**, backed by MariaDB and RAID storage. Caddy provides the reverse-proxy layer, Tailscale provides remote connectivity, and Webmin plus a custom monitoring module provide administration and visibility.
 
-The primary application is **PhotoPrism**, which provides a self-hosted photo management platform. Supporting infrastructure includes Docker, MariaDB, Caddy, Tailscale, RAID storage, Samba, UFW, Webmin, automated backups, and custom monitoring.
+The project has two goals:
 
-The project is designed around two goals:
+1. Run useful self-hosted services reliably.
+2. Document the engineering decisions, security controls, failures, recovery work, and lessons learned while building them.
 
-1. Build useful self-hosted services for everyday use.
-2. Use the infrastructure as a practical learning environment for systems administration and cybersecurity.
-
-Rather than treating the server as a simple application host, the project documents the architecture, security decisions, failures, recovery procedures, and lessons learned along the way.
+This repository intentionally focuses on architecture and sanitized examples rather than publishing private production configuration.
 
 ---
 
 ## Current Infrastructure
 
-| Component          | Technology                 |
-| ------------------ | -------------------------- |
-| Server             | Dell Precision 3620        |
-| CPU                | Intel Core i5-6500         |
-| Memory             | 16 GB RAM                  |
-| GPU                | Intel integrated graphics  |
-| Operating System   | Pop!_OS 24.04 LTS          |
-| Container Platform | Docker / Docker Compose    |
-| Photo Management   | PhotoPrism CE              |
-| Database           | MariaDB                    |
-| Reverse Proxy      | Caddy                      |
-| Remote Access      | Tailscale                  |
-| File Sharing       | Samba                      |
-| Firewall           | UFW                        |
-| Administration     | Webmin                     |
-| Storage            | 2 × 1 TB HDD               |
-| RAID               | RAID 0                     |
-| Backup Strategy    | 3-2-1 backup approach      |
-| Monitoring         | Webmin + custom collectors |
-| Repository         | GitHub                     |
+| Component | Current implementation |
+| --- | --- |
+| Server | Dell Precision 3620 |
+| CPU | Intel Core i5-6500 |
+| Memory | 16 GB RAM |
+| Graphics | Intel HD Graphics 530 |
+| Operating System | Pop!_OS 24.04 LTS |
+| Containers | Docker / Docker Compose |
+| Photo Management | PhotoPrism CE |
+| Database | MariaDB |
+| Reverse Proxy | Caddy |
+| Remote Access | Tailscale / Tailscale Funnel |
+| File Sharing | Samba |
+| Firewall | UFW |
+| Administration | SSH + Webmin |
+| Storage | 2 × 1 TB HDD |
+| RAID | mdadm RAID 0 |
+| Backups | Automated application/configuration backups + separate backup strategy |
+| Monitoring | Webmin + Webmin Homelab Monitor |
 
 ---
 
 ## Architecture
 
-The infrastructure is intentionally separated into application, networking, storage, and administrative layers.
-
 ```text
-                         Remote Access
+                         Internet
+                            │
+                    Tailscale Funnel
+                            │
+                            ▼
+                         Caddy
+                            │
+                            ▼
+                       PhotoPrism
+                      /          \
+                     ▼            ▼
+              Photo Storage     MariaDB
+                     │
+                     ▼
+                RAID Storage
+
+
+               Administration
+                     │
+                  Tailscale
+                 /         \
+                ▼           ▼
+               SSH        Webmin
                               │
                               ▼
-                       Tailscale / Funnel
-                              │
-                              ▼
-                         Caddy Proxy
-                              │
-                              ▼
-                         PhotoPrism
-                              │
-                    ┌─────────┴─────────┐
-                    ▼                   ▼
-              Photo Storage          MariaDB
-                    │
-                    ▼
-                 RAID Storage
-                    │
-                    ▼
-             Backup Infrastructure
+                    Homelab Monitor
 ```
 
-Administrative services such as SSH, Webmin, Samba, and server management are kept separate from the public-facing application path wherever practical.
+Administrative services are kept separate from the public PhotoPrism path. SSH and Webmin are restricted to trusted network paths rather than being directly exposed to the Internet.
+
+For more detail, see the documents in [`docs/`](docs/).
 
 ---
 
 ## PhotoPrism
 
-PhotoPrism is the primary application running on the server.
+PhotoPrism is the primary application and is deployed with Docker Compose alongside MariaDB.
 
-The service provides:
+Current design highlights include:
 
-* Self-hosted photo management
-* Automatic indexing and organization
-* Photo and video browsing
-* Metadata management
-* User authentication
-* Database-backed application storage
-* Remote access
+- Host-mounted photo storage rather than storing originals inside the container
+- Separate MariaDB service
+- Caddy reverse proxy
+- Remote access through Tailscale Funnel
+- Multi-factor authentication configured for PhotoPrism accounts
+- Scheduled indexing appropriate to the library's upload pattern
+- Intel `/dev/dri` device access for supported media workloads
+- Automated backups of important application data and configuration
 
-PhotoPrism runs as a Docker container and communicates with a separate MariaDB container over an internal Docker network.
+### Container hardening
 
-Photo storage is provided through a host-mounted storage volume rather than being stored inside the application container.
+PhotoPrism previously used the broad Docker security overrides `seccomp:unconfined` and `apparmor:unconfined`. These were removed after testing showed they were unnecessary.
 
-For public documentation, actual filesystem locations and private infrastructure identifiers are intentionally omitted.
+The deployment now uses Docker's normal seccomp filtering and the `docker-default` AppArmor profile while retaining required `/dev/dri` access. Photo browsing, thumbnails, full-resolution images, and supported video playback were validated after the change, and application/kernel logs were checked for security-policy denials.
 
----
-
-## Docker
-
-Docker is used to isolate the primary application services from the host operating system.
-
-Current containerized services include:
-
-* PhotoPrism
-* MariaDB
-* Caddy
-
-The containers communicate through dedicated Docker networks.
-
-The architecture avoids unnecessary host port exposure. Services that do not need direct access from the host network remain accessible only through their Docker networks.
-
-This provides a cleaner separation between:
-
-* Public-facing services
-* Internal application services
-* Database services
-* Host administration
-
-Docker Compose is used to define and manage the application stack.
+See [PhotoPrism documentation](docs/photoprism.md) and [Docker documentation](docs/docker.md).
 
 ---
 
 ## Networking & Remote Access
 
-Remote access is provided through **Tailscale**.
-
-The project originally explored traditional direct port forwarding and public reverse-proxy access, but the ISP network environment presented limitations that made this approach impractical.
-
-This led to using a mesh-VPN-based architecture instead.
+The original design explored traditional inbound port forwarding and public reverse-proxy access. ISP-side networking constraints made that design impractical, leading to a Tailscale-based architecture.
 
 The current design uses:
 
-* Tailscale for secure remote administration
-* Tailscale Funnel for public PhotoPrism access
-* Caddy as the reverse-proxy layer
-* UFW for host-level firewall restrictions
-* Docker networks for internal service isolation
+- **Tailscale** for remote administration
+- **Tailscale Funnel** for the PhotoPrism web application
+- **Caddy** as the application reverse proxy
+- **UFW** for host-level access restrictions
+- **Docker networks** for service isolation
 
-A major design principle is **least necessary exposure**.
+The guiding principle is **least necessary exposure**: a service is reachable only where there is a specific operational requirement.
 
-Services are not exposed publicly simply because they can be. Public access is limited to the application that requires it, while administrative interfaces remain restricted.
+See [Networking documentation](docs/networking.md).
 
 ---
 
 ## Security
 
-Security is a core consideration of the homelab, with an emphasis on minimizing attack surface, restricting administrative access, and separating publicly accessible services from internal infrastructure.
+Security controls currently include:
 
-Current security practices include:
+- UFW with service- and network-specific rules
+- SSH public-key authentication with password authentication disabled
+- Root SSH login disabled
+- Tailscale-restricted remote administration
+- Webmin access restricted to trusted LAN/Tailscale paths
+- PhotoPrism multi-factor authentication
+- Docker default seccomp filtering
+- Docker `docker-default` AppArmor confinement for PhotoPrism
+- Minimal host-port exposure for containerized services
+- Separation of application, database, and administrative access paths
+- Backup and configuration review procedures
+- No credentials or private infrastructure data committed to this repository
 
-* UFW host-based firewall with service-specific network restrictions
-* Tailscale for secure remote connectivity
-* Restricted administrative access to services such as SSH and Webmin
-* Docker services configured without unnecessary host port exposure
-* Caddy used as a controlled reverse-proxy layer
-* Separation of application services from administrative services
-* Automated backups of important application and configuration data
-* Encrypted offline backup storage
-* Regular system updates and configuration review
-* Avoiding direct public exposure of administrative services
-
-The server follows a principle of **least necessary exposure**: services are only made accessible where there is a specific requirement, and administrative interfaces are kept separate from the public PhotoPrism access path.
-
-Security improvements are treated as an ongoing process. Future work will include additional access controls, multi-factor authentication, Tailscale access policies, network segmentation, security monitoring, threat-model documentation, and periodic security reviews.
+Security remains an ongoing process. Future work includes stronger recovery testing, additional monitoring/alerting, access-policy refinement, and periodic review of the attack surface.
 
 ---
 
-## Storage & RAID
+## Storage & Recovery
 
-The server currently uses two 1 TB hard drives configured as **RAID 0**.
+The current storage array uses two 1 TB hard drives in **RAID 0**. This provides capacity but **no redundancy**: failure of either member can make the array unusable.
 
-RAID 0 provides increased usable capacity and can improve sequential storage performance, but it provides **no redundancy**.
+> **RAID is storage configuration, not backup.**
 
-A failed drive can result in the loss of the entire RAID array.
+The long-term storage plan is to move important data toward redundant storage while maintaining independent backups.
 
-For that reason:
-
-> **RAID is treated as a storage configuration, not a backup.**
-
-The homelab uses a separate 3-2-1 backup strategy to protect important data.
-
-Future storage expansion is expected to focus on redundant storage configurations such as RAID 1 rather than relying on RAID 0 for important data.
+Automated PhotoPrism backups are already operational, but disaster-recovery work is intentionally still marked as in progress. Remaining work includes documented restore procedures, restore drills, failure scenarios, and stronger off-system/off-site recovery readiness.
 
 ---
 
-## Backup & Recovery
+## Monitoring
 
-Backups are designed around the 3-2-1 principle:
+Server administration and monitoring use Webmin together with a custom project, **Webmin Homelab Monitor**.
 
-* Multiple copies of important data
-* Copies stored on different types of storage
-* At least one copy maintained offline
+The monitoring work covers areas such as:
 
-Important backup data is encrypted before being stored offline.
+- CPU and memory utilization
+- RAID and storage health
+- SMART information
+- Docker/service state
+- Network diagnostics
+- Tailscale/Funnel state
+- Firewall and SSH exposure
+- Backup status
+- Host health information
 
-The backup strategy is intended to protect against:
+The monitor is kept modular rather than modifying Webmin core files, making it easier to maintain across Webmin upgrades.
 
-* Hardware failure
-* Accidental deletion
-* File corruption
-* Configuration mistakes
-* System failure
-* RAID failure
-* Malware or other destructive events
-
-Recovery procedures will be documented separately as the project develops.
+See [Monitoring documentation](docs/monitoring.md).
 
 ---
 
-## Monitoring & Automation
+## Documentation
 
-The homelab includes a custom monitoring effort built around Webmin.
+Detailed documentation currently available:
 
-The planned dashboard provides a centralized view of server health, including:
+- [Hardware](docs/hardware.md)
+- [Operating System](docs/operating-system.md)
+- [Docker](docs/docker.md)
+- [Networking](docs/networking.md)
+- [PhotoPrism](docs/photoprism.md)
+- [Monitoring](docs/monitoring.md)
 
-* CPU utilization
-* Memory usage
-* GPU activity
-* RAID health
-* Storage utilization
-* Disk health / SMART information
-* Docker container status
-* PhotoPrism status
-* MariaDB status
-* Caddy status
-* Network connectivity
-* Tailscale status
-* Firewall/security status
-* Backup status
-* System notifications
-* Weather information
-
-The monitoring system is being developed as a modular project rather than modifying Webmin's core source files directly.
-
-Custom collectors and integrations are intended to remain separate from the base Webmin installation so that Webmin updates do not unnecessarily overwrite project-specific changes.
-
----
-
-## Troubleshooting & Lessons Learned
-
-A major purpose of this project is documenting failures rather than only documenting successful configurations.
-
-Some of the lessons from developing the homelab include:
-
-### Don't assume a service should be publicly exposed
-
-Early experimentation with traditional public access demonstrated how ISP networking limitations can affect infrastructure design.
-
-The final architecture uses Tailscale to avoid depending on unrestricted inbound connectivity.
-
-### Containers should not automatically expose every service
-
-The database does not need to be directly accessible from the LAN or Internet.
-
-Keeping MariaDB on an internal Docker network reduces unnecessary exposure.
-
-### RAID does not replace backups
-
-A RAID array can improve availability or storage performance, but it cannot protect against every form of data loss.
-
-The backup strategy therefore exists independently of the RAID configuration.
-
-### Configuration should be documented before making major changes
-
-Several infrastructure issues reinforced the importance of recording configuration decisions, dependencies, and recovery procedures before performing upgrades or restructuring services.
-
-### Customizations should survive upgrades
-
-Directly modifying files belonging to a package or application can create maintenance problems when that software is upgraded.
-
-The dashboard project therefore aims to keep custom functionality modular and separated from Webmin's core installation.
-
----
-
-## Project Goals
-
-The long-term goals of the homelab include:
-
-* Build a reliable self-hosted photo platform
-* Develop practical Linux administration skills
-* Learn Docker and container networking
-* Practice secure remote-access design
-* Develop storage and backup strategies
-* Build monitoring and automation systems
-* Learn system recovery and disaster-recovery techniques
-* Practice security hardening
-* Create reusable infrastructure documentation
-* Develop a custom Webmin dashboard
-* Turn the homelab into a practical cybersecurity and infrastructure portfolio project
-
----
-
-## Technologies
-
-### Operating System
-
-* Pop!_OS
-* Linux
-* systemd
-* UFW
-
-### Infrastructure
-
-* Docker
-* Docker Compose
-* Webmin
-* Samba
-* RAID / mdadm
-
-### Applications
-
-* PhotoPrism
-* MariaDB
-* Caddy
-
-### Networking
-
-* Tailscale
-* Reverse proxy
-* Docker networking
-
-### Security
-
-* UFW
-* Tailscale access controls
-* Authentication
-* Multi-factor authentication
-* Encrypted backups
-* Least-privilege / least-exposure principles
-
-### Development & Documentation
-
-* Git
-* GitHub
-* Bash
-* Markdown
+Additional architecture, security, backup/recovery, and troubleshooting documentation will be added as those areas are formalized.
 
 ---
 
 ## Repository Structure
 
+This tree reflects the repository **as it exists now**, rather than presenting planned directories as already implemented.
+
 ```text
 abrvn-homelab/
-├── README.md
 ├── .gitignore
-├── docs/
-│   ├── architecture.md
-│   ├── hardware.md
-│   ├── operating-system.md
-│   ├── photoprism.md
-│   ├── docker.md
-│   ├── networking.md
-│   ├── backups.md
-│   ├── monitoring.md
-│   ├── disaster-recovery.md
-│   └── troubleshooting.md
-├── dashboard/
-│   ├── README.md
-│   ├── webmin-module/
-│   ├── collectors/
-│   ├── integrations/
-│   └── systemd/
-├── infrastructure/
-│   ├── photoprism/
-│   ├── caddy/
-│   └── samba/
-├── scripts/
-├── security/
-├── diagrams/
-└── screenshots/
+├── README.md
+└── docs/
+    ├── docker.md
+    ├── hardware.md
+    ├── monitoring.md
+    ├── networking.md
+    ├── operating-system.md
+    └── photoprism.md
 ```
 
-Only components that are actually implemented will be added to the repository. Planned directories and features are documented as future work rather than represented as completed infrastructure.
+Future directories and documents will be added only when they contain useful, sanitized material.
+
+---
+
+## Lessons Learned
+
+Several design lessons have shaped the project:
+
+**Public exposure should be intentional.** ISP networking limitations and early remote-access experiments led to a design where administrative interfaces remain private and only the required application path is exposed.
+
+**Containers do not need every service published to the host.** Internal services such as the database can communicate through Docker networking without unnecessary LAN or Internet exposure.
+
+**RAID does not replace backups.** Storage availability, backup, and disaster recovery solve different problems and are treated separately.
+
+**Security exceptions should be justified and tested.** The PhotoPrism deployment operated with broad seccomp/AppArmor exceptions until testing demonstrated that the application and Intel graphics device access worked under Docker's default protections.
+
+**Customizations should survive upgrades.** The Webmin monitoring project is kept separate from Webmin core files so application updates do not overwrite project-specific functionality.
+
+**Recovery matters as much as deployment.** A service is not considered fully resilient merely because backups exist; restoration procedures and failure drills are part of the roadmap.
+
+---
+
+## Project Roadmap
+
+### Operational / established
+
+- Linux host and core networking
+- Docker / Docker Compose
+- PhotoPrism + MariaDB
+- Caddy reverse proxy
+- Tailscale remote access and Funnel
+- UFW and hardened SSH access
+- PhotoPrism MFA
+- Automated PhotoPrism backups
+- Webmin administration
+- Custom Webmin monitoring project
+
+### In progress
+
+- Repository documentation
+- Backup validation and restore testing
+- Disaster-recovery procedures
+- Monitoring and alerting improvements
+- Storage redundancy planning
+- Additional sanitized architecture/configuration examples
 
 ---
 
 ## Security & Privacy Notice
 
-This repository intentionally does **not** contain:
+This repository intentionally does **not** publish:
 
-* Passwords
-* API keys
-* Private keys
-* Authentication tokens
-* Personal photographs
-* Private backups
-* Database credentials
-* Real internal IP addresses
-* Tailscale IP addresses or identifiers
-* Private network configuration
-* Real filesystem locations
-* Personal account information
-* Sensitive infrastructure identifiers
+- Passwords or database credentials
+- API keys or authentication tokens
+- Private keys
+- Personal photographs
+- Private backups or databases
+- Real private/internal IP addresses
+- Tailscale addresses or private identifiers
+- Personal account information
+- Sensitive production paths or infrastructure identifiers
 
-Examples in the documentation use sanitized paths, placeholders, or generalized architecture diagrams where appropriate.
-
-The repository is intended to demonstrate infrastructure design, engineering decisions, and allows for anyone to try it themselves without exposing private information from the underlying homelab.
+Examples should use placeholders or generalized values. Anyone adapting material from this repository should review it for their own environment rather than treating it as a drop-in production configuration.
 
 ---
 
-## Project Status
+## Why This Project Exists
 
-The homelab is an ongoing project.
+ABRVN Homelab is both working infrastructure and a learning portfolio. It provides hands-on experience with Linux administration, Docker, networking, storage, secure remote access, backup/recovery planning, monitoring, troubleshooting, and infrastructure documentation.
 
-Current priorities include:
-
-1. Maintain a stable PhotoPrism deployment
-2. Continue improving backup and recovery readiness
-3. Document the existing infrastructure
-4. Develop the custom Webmin dashboard
-5. Add monitoring and automation
-6. Improve security controls
-7. Document disaster recovery procedures
-8. Continue testing and refining the infrastructure
-
-The project will evolve as new services, hardware, security controls, and automation are added.
+The repository is intended to show not only **what** was deployed, but **why** design decisions were made and how the environment changed as problems were discovered and solved.
