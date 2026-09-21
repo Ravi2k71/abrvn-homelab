@@ -144,6 +144,8 @@ Security controls currently include:
 
 Security remains an ongoing process. Future work includes stronger recovery testing, additional monitoring/alerting, access-policy refinement, and periodic review of the attack surface.
 
+See [Security documentation](docs/security.md).
+
 ---
 
 ## Storage & Recovery
@@ -154,7 +156,9 @@ The current storage array uses two 1 TB hard drives in **RAID 0**. This provides
 
 The long-term storage plan is to move important data toward redundant storage while maintaining independent backups.
 
-Automated PhotoPrism backups are already operational, but disaster-recovery work is intentionally still marked as in progress. Remaining work includes documented restore procedures, restore drills, failure scenarios, and stronger off-system/off-site recovery readiness.
+Automated PhotoPrism backups are operational, but disaster recovery remains in progress. Remaining work includes formal restore procedures, controlled restore drills, boot-drive and storage-failure procedures, stronger integrity validation, and an independent off-system/off-site recovery copy.
+
+See [Backup and Disaster Recovery](docs/backup-recovery.md).
 
 ---
 
@@ -182,16 +186,18 @@ See [Monitoring documentation](docs/monitoring.md).
 
 ## Documentation
 
-Detailed documentation currently available:
+The repository now documents both the current implementation and the operational reasoning that produced it:
 
-- [Hardware](docs/hardware.md)
-- [Operating System](docs/operating-system.md)
-- [Docker](docs/docker.md)
-- [Networking](docs/networking.md)
-- [PhotoPrism](docs/photoprism.md)
-- [Monitoring](docs/monitoring.md)
-
-Additional architecture, security, backup/recovery, and troubleshooting documentation will be added as those areas are formalized.
+- [Architecture](docs/architecture.md) — system boundaries, service relationships, trust zones, data flow, and failure domains
+- [Hardware](docs/hardware.md) — physical platform and storage hardware
+- [Operating System](docs/operating-system.md) — host operating-system design and administration
+- [Docker](docs/docker.md) — container architecture and deployment model
+- [Networking](docs/networking.md) — LAN, Tailscale, Funnel, reverse proxy, and remote-access design
+- [PhotoPrism](docs/photoprism.md) — family photo service architecture and operation
+- [Monitoring](docs/monitoring.md) — Webmin and custom monitoring coverage
+- [Security](docs/security.md) — trust boundaries, SSH/UFW/Webmin controls, MFA, container hardening, and defense in depth
+- [Backup and Disaster Recovery](docs/backup-recovery.md) — current backup system, failure scenarios, restore design, and remaining DR work
+- [Troubleshooting and Lessons Learned](docs/troubleshooting.md) — major incidents, recovery experience, diagnostic methods, and engineering lessons
 
 ---
 
@@ -204,12 +210,16 @@ abrvn-homelab/
 ├── .gitignore
 ├── README.md
 └── docs/
+    ├── architecture.md
+    ├── backup-recovery.md
     ├── docker.md
     ├── hardware.md
     ├── monitoring.md
     ├── networking.md
     ├── operating-system.md
-    └── photoprism.md
+    ├── photoprism.md
+    ├── security.md
+    └── troubleshooting.md
 ```
 
 Future directories and documents will be added only when they contain useful, sanitized material.
@@ -219,6 +229,10 @@ Future directories and documents will be added only when they contain useful, sa
 ## Lessons Learned
 
 Several design lessons have shaped the project:
+
+**Recoverability must be designed before a disaster.** Loss of an earlier server demonstrated that years of successful operation do not prove that an environment can be rebuilt. The current project therefore treats backups, documentation, and restore testing as separate requirements.
+
+**A successful boot is not a complete recovery.** A partial operating-system upgrade failure showed that package state, networking, remote access, storage, containers, firewalling, and applications all need validation after a major system event.
 
 **Public exposure should be intentional.** ISP networking limitations and early remote-access experiments led to a design where administrative interfaces remain private and only the required application path is exposed.
 
@@ -230,7 +244,9 @@ Several design lessons have shaped the project:
 
 **Customizations should survive upgrades.** The Webmin monitoring project is kept separate from Webmin core files so application updates do not overwrite project-specific functionality.
 
-**Recovery matters as much as deployment.** A service is not considered fully resilient merely because backups exist; restoration procedures and failure drills are part of the roadmap.
+**Troubleshooting should preserve evidence.** Inspect the current state, isolate the failing layer, make one controlled change, test real behavior, and review logs before moving to the next hypothesis.
+
+See [Troubleshooting and Lessons Learned](docs/troubleshooting.md) for the incidents behind these practices.
 
 ---
 
@@ -248,15 +264,20 @@ Several design lessons have shaped the project:
 - Automated PhotoPrism backups
 - Webmin administration
 - Custom Webmin monitoring project
+- Core architecture documentation
+- Security architecture documentation
+- Backup/recovery design documentation
+- Troubleshooting and incident documentation
 
 ### In progress
 
-- Repository documentation
 - Backup validation and restore testing
-- Disaster-recovery procedures
+- Disaster-recovery procedures and drills
 - Monitoring and alerting improvements
 - Storage redundancy planning
-- Additional sanitized architecture/configuration examples
+- Off-system/off-site recovery protection
+- Additional sanitized configuration examples
+- Periodic documentation maintenance as the environment changes
 
 ---
 
